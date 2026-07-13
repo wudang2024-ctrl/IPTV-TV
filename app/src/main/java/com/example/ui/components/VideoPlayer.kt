@@ -1269,6 +1269,17 @@ private fun createMediaSource(
                     
     if (isHlsType) {
         mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+    } else if (
+        url.contains(".ts", ignoreCase = true) || 
+        url.contains("/udp/", ignoreCase = true) || 
+        url.contains("/rtp/", ignoreCase = true) || 
+        url.contains("udpxy", ignoreCase = true) || 
+        url.contains(":7088", ignoreCase = true) ||
+        contentType.contains("mp2t") || 
+        contentType.contains("mpeg") || 
+        contentType.contains("octet-stream")
+    ) {
+        mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP2T)
     }
     
     val mediaItem = mediaItemBuilder.build()
