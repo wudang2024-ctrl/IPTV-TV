@@ -147,3 +147,19 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.whenTaskAdded {
+  if (name == "assembleDebug") {
+    doLast {
+      val src = File("app/build/outputs/apk/debug/app-universal-debug.apk")
+      val dest = File("app/build/outputs/apk/debug/app-debug.apk")
+      if (src.exists()) {
+        src.copyTo(dest, overwrite = true)
+        println("Successfully copied universal debug APK to app-debug.apk for CI/CD compatibility.")
+      } else {
+        println("Warning: app-universal-debug.apk not found at $src")
+      }
+    }
+  }
+}
+
