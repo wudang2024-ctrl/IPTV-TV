@@ -168,6 +168,14 @@ fun IptvMainScreen(
                                 showChannelOverlay = !showChannelOverlay
                                 true
                             }
+                            KeyEvent.KEYCODE_VOLUME_UP -> {
+                                viewModel.adjustVolume(1)
+                                true
+                            }
+                            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                                viewModel.adjustVolume(-1)
+                                true
+                            }
                             KeyEvent.KEYCODE_BACK -> {
                                 if (showChannelOverlay) {
                                     showChannelOverlay = false
@@ -191,6 +199,7 @@ fun IptvMainScreen(
                 proxyPort = proxyPort,
                 onNextChannel = handleNextChannel,
                 onPrevChannel = handlePrevChannel,
+                viewModel = viewModel,
                 onToggleFullscreen = { isFullscreen = false },
                 modifier = Modifier.fillMaxSize(),
                 onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
@@ -478,6 +487,7 @@ fun IptvMainScreen(
                                     proxyPort = proxyPort,
                                     onNextChannel = handleNextChannel,
                                     onPrevChannel = handlePrevChannel,
+                                    viewModel = viewModel,
                                     onToggleFullscreen = { isFullscreen = true },
                                     modifier = Modifier.fillMaxSize(),
                                     onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
@@ -561,6 +571,7 @@ fun IptvMainScreen(
                             proxyPort = proxyPort,
                             onNextChannel = handleNextChannel,
                             onPrevChannel = handlePrevChannel,
+                            viewModel = viewModel,
                             onToggleFullscreen = { isFullscreen = true },
                             modifier = Modifier.fillMaxSize(),
                             onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },

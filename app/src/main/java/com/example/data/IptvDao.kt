@@ -56,6 +56,9 @@ interface IptvDao {
     @Query("SELECT * FROM epg_programs WHERE startTime >= :startTime AND endTime <= :endTime ORDER BY startTime ASC")
     fun getProgramsByTimeRange(startTime: Long, endTime: Long): Flow<List<EpgProgram>>
 
+    @Query("SELECT * FROM epg_programs WHERE startTime <= :now AND endTime >= :now")
+    suspend fun getCurrentProgramsSync(now: Long): List<EpgProgram>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEpgPrograms(programs: List<EpgProgram>)
 

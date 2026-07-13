@@ -22,6 +22,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.BorderStroke
 import com.example.data.Channel
 import com.example.viewmodel.IptvViewModel
 
@@ -36,6 +39,7 @@ fun ChannelList(
     val selectedPlaylistId by viewModel.selectedPlaylistId.collectAsState()
     val currentGroup by viewModel.currentGroup.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val currentPrograms by viewModel.currentPrograms.collectAsState()
 
     // Layout options: "Grid", "Compact", "Text"
     var layoutView by remember { mutableStateOf("Compact") }
@@ -139,6 +143,7 @@ fun ChannelList(
                         items(channels) { channel ->
                             GridChannelCard(
                                 channel = channel,
+                                currentPrograms = currentPrograms,
                                 onSelect = { onSelectChannel(channel) },
                                 onToggleFav = { viewModel.toggleFavorite(channel) }
                             )
@@ -153,6 +158,7 @@ fun ChannelList(
                         items(channels) { channel ->
                             CompactChannelRow(
                                 channel = channel,
+                                currentPrograms = currentPrograms,
                                 onSelect = { onSelectChannel(channel) },
                                 onToggleFav = { viewModel.toggleFavorite(channel) }
                             )
@@ -167,6 +173,7 @@ fun ChannelList(
                         items(channels) { channel ->
                             TextChannelRow(
                                 channel = channel,
+                                currentPrograms = currentPrograms,
                                 onSelect = { onSelectChannel(channel) },
                                 onToggleFav = { viewModel.toggleFavorite(channel) }
                             )
@@ -181,17 +188,22 @@ fun ChannelList(
 @Composable
 fun GridChannelCard(
     channel: Channel,
+    currentPrograms: Map<String, com.example.data.EpgProgram>,
     onSelect: () -> Unit,
     onToggleFav: () -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(120.dp)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
             .clickable { onSelect() }
             .testTag("channel_grid_${channel.id}"),
+        border = if (isFocused) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = if (isFocused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )
     ) {
         Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
@@ -220,7 +232,7 @@ fun GridChannelCard(
                     Icons.Default.LiveTv,
                     contentDescription = "CCTV Logo",
                     modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -228,13 +240,18 @@ fun GridChannelCard(
                     text = channel.name,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
+                    color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else Color.Unspecified,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                
+                val activeProgram = currentPrograms[channel.tvgId.ifEmpty { "channel_${channel.id}" }]
                 Text(
-                    text = "Ch ${channel.channelNo}",
+                    text = activeProgram?.title ?: "Ch ${channel.channelNo}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
+                    color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -244,16 +261,21 @@ fun GridChannelCard(
 @Composable
 fun CompactChannelRow(
     channel: Channel,
+    currentPrograms: Map<String, com.example.data.EpgProgram>,
     onSelect: () -> Unit,
     onToggleFav: () -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
             .clickable { onSelect() }
             .testTag("channel_compact_${channel.id}"),
+        border = if (isFocused) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            containerColor = if (isFocused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         )
     ) {
         Row(
@@ -263,14 +285,17 @@ fun CompactChannelRow(
             Box(
                 modifier = Modifier
                     .size(42.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), MaterialTheme.shapes.small),
+                    .background(
+                        if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        MaterialTheme.shapes.small
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = channel.channelNo.toString(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -290,23 +315,37 @@ fun CompactChannelRow(
                     Text(
                         text = channel.name,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else Color.Unspecified
                     )
                 }
-                Text(
-                    text = "地址: ${channel.url}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                
+                val activeProgram = currentPrograms[channel.tvgId.ifEmpty { "channel_${channel.id}" }]
+                if (activeProgram != null) {
+                    Text(
+                        text = "正在播放: ${activeProgram.title}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f) else MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                } else {
+                    Text(
+                        text = "地址: ${channel.url}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else Color.Gray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             IconButton(onClick = onToggleFav) {
                 Icon(
                     if (channel.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
                     contentDescription = "收藏",
-                    tint = if (channel.isFavorite) Color(0xFFFFD700) else Color.Gray
+                    tint = if (channel.isFavorite) Color(0xFFFFD700) else if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f) else Color.Gray
                 )
             }
         }
@@ -316,41 +355,69 @@ fun CompactChannelRow(
 @Composable
 fun TextChannelRow(
     channel: Channel,
+    currentPrograms: Map<String, com.example.data.EpgProgram>,
     onSelect: () -> Unit,
     onToggleFav: () -> Unit
 ) {
-    Row(
+    var isFocused by remember { mutableStateOf(false) }
+    Card(
         modifier = Modifier
             .fillMaxWidth()
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
             .clickable { onSelect() }
-            .padding(vertical = 8.dp, horizontal = 4.dp)
             .testTag("channel_text_${channel.id}"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        border = if (isFocused) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isFocused) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+        )
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Text(
-                text = "${channel.channelNo}.",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.width(32.dp)
-            )
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp, horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${channel.channelNo}.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.width(32.dp)
+                )
+                
+                Column {
+                    Text(
+                        text = channel.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer else Color.Unspecified,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val activeProgram = currentPrograms[channel.tvgId.ifEmpty { "channel_${channel.id}" }]
+                    if (activeProgram != null) {
+                        Text(
+                            text = activeProgram.title,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else Color.Gray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
 
-        IconButton(onClick = onToggleFav, modifier = Modifier.size(24.dp)) {
-            Icon(
-                if (channel.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = "收藏",
-                tint = if (channel.isFavorite) Color(0xFFFFD700) else Color.Gray,
-                modifier = Modifier.size(18.dp)
-            )
+            IconButton(onClick = onToggleFav, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    if (channel.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = "收藏",
+                    tint = if (channel.isFavorite) Color(0xFFFFD700) else if (isFocused) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f) else Color.Gray,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }

@@ -1,12 +1,16 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.content.Context
+import android.media.AudioManager
 import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,6 +75,19 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentProgram = MutableStateFlow<EpgProgram?>(null)
     val currentProgram: StateFlow<EpgProgram?> = _currentProgram.asStateFlow()
 
+    private val _currentPrograms = MutableStateFlow<Map<String, EpgProgram>>(emptyMap())
+    val currentPrograms: StateFlow<Map<String, EpgProgram>> = _currentPrograms.asStateFlow()
+
+    private val audioManager by lazy { application.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private val _currentVolume = MutableStateFlow(0)
+    val currentVolume: StateFlow<Int> = _currentVolume.asStateFlow()
+    val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+
+    private val _showVolumeOverlay = MutableStateFlow(false)
+    val showVolumeOverlay: StateFlow<Boolean> = _showVolumeOverlay.asStateFlow()
+
+    private var volumeHideJob: Job? = null
+
     // --- Loading & Status ---
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -98,6 +115,9 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Decoder and Audio Settings ---
     private val prefs = application.getSharedPreferences("iptv_settings", android.content.Context.MODE_PRIVATE)
+
+    private val _epgSubscriptionUrl = MutableStateFlow(prefs.getString("epg_subscription_url", "") ?: "")
+    val epgSubscriptionUrl: StateFlow<String> = _epgSubscriptionUrl.asStateFlow()
 
     private val _decoderKernel = MutableStateFlow(prefs.getString("decoder_kernel", "VLC") ?: "VLC")
     val decoderKernel: StateFlow<String> = _decoderKernel.asStateFlow()
@@ -151,6 +171,21 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     init {
         // Retrieve and update local IP address
         localIpAddress.value = getIpAddress()
+
+        // Initialize volume state
+        try {
+            _currentVolume.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        } catch (e: Exception) {
+            Log.e("IptvViewModel", "Failed to init volume: ${e.message}")
+        }
+
+        // Periodically refresh active EPG program map
+        viewModelScope.launch {
+            while (true) {
+                refreshCurrentPrograms()
+                delay(60000) // update every minute
+            }
+        }
 
         // Start LAN push server to receive streams pushed from phone/PC
         lanPushServer = LanPushServer(lanPushPort) { url, name ->
@@ -461,6 +496,69 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
                 _currentGroup.value = "局域网推送"
                 _selectedPlaylistId.value = playlistId
                 Log.d("IptvViewModel", "LAN Push processed single channel successfully: $name -> $url")
+            }
+        }
+    }
+
+    fun refreshCurrentPrograms() {
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+                val list = repository.getCurrentPrograms(now)
+                _currentPrograms.value = list.associateBy { it.tvgId }
+            } catch (e: Exception) {
+                Log.e("IptvViewModel", "Failed to refresh current programs: ${e.message}")
+            }
+        }
+    }
+
+    fun adjustVolume(delta: Int) {
+        viewModelScope.launch {
+            try {
+                val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val target = (current + delta).coerceIn(0, maxVolume)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+                _currentVolume.value = target
+                _showVolumeOverlay.value = true
+
+                volumeHideJob?.cancel()
+                volumeHideJob = launch {
+                    delay(2000)
+                    _showVolumeOverlay.value = false
+                }
+            } catch (e: Exception) {
+                Log.e("IptvViewModel", "Error adjusting volume: ${e.message}")
+            }
+        }
+    }
+
+    fun setEpgSubscriptionUrl(url: String) {
+        _epgSubscriptionUrl.value = url
+        prefs.edit().putString("epg_subscription_url", url).apply()
+    }
+
+    fun syncEpgSubscription() {
+        viewModelScope.launch {
+            val url = _epgSubscriptionUrl.value.trim()
+            if (url.isEmpty()) {
+                _errorMessage.value = "订阅地址不能为空"
+                return@launch
+            }
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val result = repository.importEpg(url)
+                if (result.isSuccess) {
+                    val count = result.getOrNull() ?: 0
+                    _errorMessage.value = "节目指南同步成功，共载入 $count 个节目"
+                    refreshCurrentPrograms()
+                } else {
+                    _errorMessage.value = "节目指南导入失败: ${result.exceptionOrNull()?.message}"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "节目指南导入失败: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }

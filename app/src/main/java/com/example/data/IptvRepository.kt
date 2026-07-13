@@ -276,6 +276,10 @@ class IptvRepository(
         }
     }
 
+    suspend fun getCurrentPrograms(now: Long): List<EpgProgram> = withContext(Dispatchers.IO) {
+        dao.getCurrentProgramsSync(now)
+    }
+
     /**
      * Imports XMLTV EPG feed.
      */

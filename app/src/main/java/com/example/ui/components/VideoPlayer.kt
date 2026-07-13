@@ -78,6 +78,7 @@ fun VideoPlayer(
     proxyPort: Int,
     onNextChannel: () -> Unit,
     onPrevChannel: () -> Unit,
+    viewModel: com.example.viewmodel.IptvViewModel,
     modifier: Modifier = Modifier,
     onToggleFullscreen: (() -> Unit)? = null,
     multicastMode: String = "InternalProxy",
@@ -114,8 +115,9 @@ fun VideoPlayer(
 
     // --- AudioManager & Brightness Controls ---
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
-    var currentVolume by remember { mutableStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) }
+    val maxVolume = viewModel.maxVolume
+    val currentVolume by viewModel.currentVolume.collectAsState()
+    val showVolumeOverlay by viewModel.showVolumeOverlay.collectAsState()
 
     val activity = context as? Activity
     var currentBrightness by remember {
@@ -123,7 +125,6 @@ fun VideoPlayer(
     }
 
     // Gesture indicator values
-    var showVolumeOverlay by remember { mutableStateOf(false) }
     var showBrightnessOverlay by remember { mutableStateOf(false) }
 
     // --- Persisted Player Settings (Decoder & Audio Delay) ---
@@ -581,7 +582,6 @@ fun VideoPlayer(
                         showControllers = true
                     },
                     onDragEnd = {
-                        showVolumeOverlay = false
                         showBrightnessOverlay = false
                     },
                     onDrag = { change, dragAmount ->
@@ -591,11 +591,10 @@ fun VideoPlayer(
 
                         if (isRightSide) {
                             // Volume control
-                            val volumeDelta = -(dragAmount.y / 20f).toInt()
-                            val targetVol = (currentVolume + volumeDelta).coerceIn(0, maxVolume)
-                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                            currentVolume = targetVol
-                            showVolumeOverlay = true
+                            val volumeDelta = -(dragAmount.y / 25f).toInt()
+                            if (volumeDelta != 0) {
+                                viewModel.adjustVolume(volumeDelta)
+                            }
                         } else {
                             // Brightness control
                             val brightnessDelta = -dragAmount.y / 800f

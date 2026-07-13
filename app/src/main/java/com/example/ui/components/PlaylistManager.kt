@@ -158,6 +158,67 @@ fun PlaylistManager(
                     Text(text = err, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(12.dp))
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // --- XMLTV EPG Subscription Section ---
+            val epgSubscriptionUrl by viewModel.epgSubscriptionUrl.collectAsState()
+            var epgUrlInput by remember(epgSubscriptionUrl) { mutableStateOf(epgSubscriptionUrl) }
+            
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Book, contentDescription = "节目指南", tint = MaterialTheme.colorScheme.primary)
+                            Text("XMLTV EPG 节目指南订阅", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    
+                    Text(
+                        "在此配置您的 XMLTV / EPG 节目指南。应用将自动解析该节目单，并在频道列表上展示对应的即时节目预告。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = epgUrlInput,
+                            onValueChange = { epgUrlInput = it },
+                            label = { Text("EPG XMLTV 订阅地址 (.xml / .xml.gz)") },
+                            placeholder = { Text("https://epg.pw/xmltv/china.xml") },
+                            modifier = Modifier.weight(1f).testTag("epg_url_input"),
+                            singleLine = true
+                        )
+                        
+                        Button(
+                            onClick = {
+                                viewModel.setEpgSubscriptionUrl(epgUrlInput)
+                                viewModel.syncEpgSubscription()
+                            },
+                            modifier = Modifier.testTag("sync_epg_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.Sync, contentDescription = "同步")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("同步")
+                        }
+                    }
+                }
+            }
         }
 
         // --- Add Subscription Dialog ---
