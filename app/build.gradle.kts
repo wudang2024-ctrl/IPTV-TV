@@ -108,6 +108,7 @@ dependencies {
   implementation(libs.androidx.media3.exoplayer.rtsp)
   implementation(libs.androidx.media3.datasource.rtmp)
   implementation(libs.androidx.media3.ui)
+  implementation("org.videolan.android:libvlc-all:3.3.4")
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   // Uncomment to use Firestore:

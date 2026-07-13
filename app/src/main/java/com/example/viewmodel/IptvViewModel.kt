@@ -99,7 +99,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     // --- Decoder and Audio Settings ---
     private val prefs = application.getSharedPreferences("iptv_settings", android.content.Context.MODE_PRIVATE)
 
-    private val _decoderKernel = MutableStateFlow(prefs.getString("decoder_kernel", "ExoPlayer") ?: "ExoPlayer")
+    private val _decoderKernel = MutableStateFlow(prefs.getString("decoder_kernel", "VLC") ?: "VLC")
     val decoderKernel: StateFlow<String> = _decoderKernel.asStateFlow()
 
     private val _preferredAudioTrack = MutableStateFlow(prefs.getString("preferred_audio_track", "默认") ?: "默认")

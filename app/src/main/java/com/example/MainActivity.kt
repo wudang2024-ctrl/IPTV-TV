@@ -84,6 +84,7 @@ fun IptvMainScreen(
     val proxyPort by viewModel.proxyPort.collectAsState()
     val bufferMs by viewModel.bufferMs.collectAsState()
     val playbackAspect by viewModel.playbackAspect.collectAsState()
+    val decoderKernel by viewModel.decoderKernel.collectAsState()
 
     var activeTab by remember { mutableStateOf("播放") }
 
@@ -193,7 +194,8 @@ fun IptvMainScreen(
                 onToggleFullscreen = { isFullscreen = false },
                 modifier = Modifier.fillMaxSize(),
                 onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
-                isFullscreen = true
+                isFullscreen = true,
+                decoderKernel = decoderKernel
             )
 
             // Transparent overlay for touch screens
@@ -479,7 +481,8 @@ fun IptvMainScreen(
                                     onToggleFullscreen = { isFullscreen = true },
                                     modifier = Modifier.fillMaxSize(),
                                     onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
-                                    isFullscreen = false
+                                    isFullscreen = false,
+                                    decoderKernel = decoderKernel
                                 )
 
                                 // Enter PiP Button
@@ -561,7 +564,8 @@ fun IptvMainScreen(
                             onToggleFullscreen = { isFullscreen = true },
                             modifier = Modifier.fillMaxSize(),
                             onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
-                            isFullscreen = false
+                            isFullscreen = false,
+                            decoderKernel = decoderKernel
                         )
 
                         // Enter PiP Button

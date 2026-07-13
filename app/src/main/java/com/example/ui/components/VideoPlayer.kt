@@ -1,6 +1,11 @@
 @file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.example.ui.components
 
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
+
 import android.app.Activity
 import android.content.Context
 import android.media.AudioManager
@@ -57,7 +62,7 @@ data class AudioTrackInfo(
     val language: String?,
     val label: String?,
     val isSelected: Boolean,
-    val trackGroup: androidx.media3.common.TrackGroup,
+    val trackGroup: androidx.media3.common.TrackGroup? = null,
     val mimeType: String? = null,
     val sampleRate: Int = -1,
     val channelCount: Int = -1
@@ -78,10 +83,34 @@ fun VideoPlayer(
     multicastMode: String = "InternalProxy",
     externalProxyUrl: String = "http://192.168.31.1:7088",
     onPlaybackAspectChange: ((String) -> Unit)? = null,
-    isFullscreen: Boolean = false
+    isFullscreen: Boolean = false,
+    decoderKernel: String = "VLC"
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // --- Controller HUD Visibility & Playback States ---
+    var showControllers by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(true) }
+    var playerError by remember { mutableStateOf<String?>(null) }
+    var isBuffering by remember { mutableStateOf(false) }
+    var forceHlsForCurrentUrl by remember { mutableStateOf(false) }
+
+    // --- LibVLC Instantiation ---
+    val libVLC = remember {
+        val args = ArrayList<String>().apply {
+            add("--rtsp-tcp")
+            add("--audio-time-stretch")
+            add("--no-drop-late-frames")
+            add("--no-skip-frames")
+            add("-vvv")
+        }
+        LibVLC(context, args)
+    }
+
+    val vlcPlayer = remember(libVLC) {
+        MediaPlayer(libVLC)
+    }
 
     // --- AudioManager & Brightness Controls ---
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -114,6 +143,11 @@ fun VideoPlayer(
 
     LaunchedEffect(audioDelayMs) {
         delayAudioProcessor.setDelayMs(audioDelayMs)
+        try {
+            vlcPlayer.setAudioDelay(audioDelayMs * 1000L)
+        } catch (e: Exception) {
+            Log.e("VideoPlayer", "Failed to set VLC audio delay", e)
+        }
     }
 
     // --- Dynamic Track State ---
@@ -213,12 +247,64 @@ fun VideoPlayer(
             }
     }
 
-    // --- Controller HUD Visibility ---
-    var showControllers by remember { mutableStateOf(true) }
-    var isPlaying by remember { mutableStateOf(true) }
-    var playerError by remember { mutableStateOf<String?>(null) }
-    var isBuffering by remember { mutableStateOf(false) }
-    var forceHlsForCurrentUrl by remember { mutableStateOf(false) }
+    DisposableEffect(libVLC) {
+        onDispose {
+            libVLC.release()
+        }
+    }
+
+    DisposableEffect(vlcPlayer) {
+        val listener = MediaPlayer.EventListener { event ->
+            when (event.type) {
+                MediaPlayer.Event.Buffering -> {
+                    isBuffering = event.buffering < 100f
+                }
+                MediaPlayer.Event.Playing -> {
+                    isPlaying = true
+                    isBuffering = false
+                    playerError = null
+                    
+                    // Retrieve VLC audio tracks
+                    val list = mutableListOf<AudioTrackInfo>()
+                    val currentTrackId = vlcPlayer.audioTrack
+                    vlcPlayer.audioTracks?.forEach { track ->
+                        list.add(
+                            AudioTrackInfo(
+                                groupIndex = track.id,
+                                trackIndex = 0,
+                                language = "",
+                                label = track.name ?: "Track ${track.id}",
+                                isSelected = track.id == currentTrackId,
+                                trackGroup = null,
+                                mimeType = "VLC",
+                                sampleRate = 0,
+                                channelCount = 0
+                            )
+                        )
+                    }
+                    audioTracks = list
+                }
+                MediaPlayer.Event.Paused -> {
+                    isPlaying = false
+                }
+                MediaPlayer.Event.Stopped -> {
+                    isPlaying = false
+                }
+                MediaPlayer.Event.EncounteredError -> {
+                    playerError = "播放错误 (VLC)"
+                    isBuffering = false
+                }
+            }
+        }
+        vlcPlayer.setEventListener(listener)
+        onDispose {
+            vlcPlayer.setEventListener(null)
+            vlcPlayer.stop()
+            vlcPlayer.release()
+        }
+    }
+
+
 
     // Reset fallback on channel change
     LaunchedEffect(channel) {
@@ -332,7 +418,7 @@ fun VideoPlayer(
                         val parameters = exoPlayer.trackSelectionParameters.buildUpon()
                             .setOverrideForType(
                                 androidx.media3.common.TrackSelectionOverride(
-                                    fallbackTrack.trackGroup,
+                                    fallbackTrack.trackGroup!!,
                                     listOf(fallbackTrack.trackIndex)
                                 )
                             )
@@ -352,14 +438,15 @@ fun VideoPlayer(
     }
 
     // --- Prepare Playback Stream ---
-    LaunchedEffect(channel, isProxyRunning, proxyPort, forceHlsForCurrentUrl, playerEngine, multicastMode, externalProxyUrl, reloadTrigger) {
+    LaunchedEffect(channel, isProxyRunning, proxyPort, forceHlsForCurrentUrl, playerEngine, multicastMode, externalProxyUrl, reloadTrigger, decoderKernel) {
         playerError = null
         if (playerEngine == "html5_webview") {
             try {
                 exoPlayer.stop()
                 exoPlayer.clearMediaItems()
+                vlcPlayer.stop()
             } catch (e: Exception) {
-                Log.e("VideoPlayer", "Error stopping ExoPlayer for WebView", e)
+                Log.e("VideoPlayer", "Error stopping players for WebView", e)
             }
             return@LaunchedEffect
         }
@@ -388,22 +475,47 @@ fun VideoPlayer(
         }
 
         try {
-            exoPlayer.stop()
-            exoPlayer.clearMediaItems()
-            
-            // Resolve PHP/dynamic URLs dynamically
-            val resolvedStream = if (!channel.isMulticast && (playUrl.contains(".php", ignoreCase = true) || playUrl.contains("?"))) {
-                playerError = "解析动态播放地址中..."
-                resolveStreamUrl(playUrl)
+            if (decoderKernel == "VLC") {
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+                
+                vlcPlayer.stop()
+                
+                val resolvedStream = if (!channel.isMulticast && (playUrl.contains(".php", ignoreCase = true) || playUrl.contains("?"))) {
+                    playerError = "解析动态播放地址中..."
+                    resolveStreamUrl(playUrl)
+                } else {
+                    ResolvedStream(playUrl, null)
+                }
+                
+                playerError = null
+                val media = Media(libVLC, android.net.Uri.parse(resolvedStream.url)).apply {
+                    addOption(":network-caching=$bufferMs")
+                    addOption(":clock-jitter=0")
+                    addOption(":clock-synchro=0")
+                }
+                vlcPlayer.media = media
+                media.release()
+                vlcPlayer.play()
             } else {
-                ResolvedStream(playUrl, null)
+                vlcPlayer.stop()
+                
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+                
+                val resolvedStream = if (!channel.isMulticast && (playUrl.contains(".php", ignoreCase = true) || playUrl.contains("?"))) {
+                    playerError = "解析动态播放地址中..."
+                    resolveStreamUrl(playUrl)
+                } else {
+                    ResolvedStream(playUrl, null)
+                }
+                
+                playerError = null
+                val mediaSource = createMediaSource(context, resolvedStream, forceHls = forceHlsForCurrentUrl)
+                exoPlayer.setMediaSource(mediaSource)
+                exoPlayer.prepare()
+                exoPlayer.play()
             }
-            
-            playerError = null
-            val mediaSource = createMediaSource(context, resolvedStream, forceHls = forceHlsForCurrentUrl)
-            exoPlayer.setMediaSource(mediaSource)
-            exoPlayer.prepare()
-            exoPlayer.play()
         } catch (e: Exception) {
             playerError = "无法加载流: ${e.message}"
         }
@@ -416,6 +528,41 @@ fun VideoPlayer(
         "4:3" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
         "Zoom" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
         else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+
+    LaunchedEffect(currentAspectRatio, decoderKernel) {
+        if (decoderKernel == "VLC") {
+            try {
+                when (currentAspectRatio) {
+                    "Original" -> {
+                        vlcPlayer.aspectRatio = null
+                        vlcPlayer.scale = 0f
+                    }
+                    "Stretch" -> {
+                        vlcPlayer.aspectRatio = "0:0"
+                        vlcPlayer.scale = 0f
+                    }
+                    "16:9" -> {
+                        vlcPlayer.aspectRatio = "16:9"
+                        vlcPlayer.scale = 0f
+                    }
+                    "4:3" -> {
+                        vlcPlayer.aspectRatio = "4:3"
+                        vlcPlayer.scale = 0f
+                    }
+                    "Zoom" -> {
+                        vlcPlayer.aspectRatio = null
+                        vlcPlayer.scale = 1.3f
+                    }
+                    else -> {
+                        vlcPlayer.aspectRatio = null
+                        vlcPlayer.scale = 0f
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VideoPlayer", "Error applying VLC aspect ratio", e)
+            }
+        }
     }
 
     DisposableEffect(Unit) {
@@ -599,6 +746,33 @@ fun VideoPlayer(
                         webView.destroy()
                     } catch (e: Exception) {
                         Log.e("VideoPlayer", "Error releasing WebView", e)
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (decoderKernel == "VLC") {
+            AndroidView(
+                factory = { context ->
+                    VLCVideoLayout(context).apply {
+                        layoutParams = FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        try {
+                            vlcPlayer.attachViews(this, null, false, false)
+                        } catch (e: Exception) {
+                            Log.e("VideoPlayer", "Error attaching VLC views", e)
+                        }
+                    }
+                },
+                update = { view ->
+                    // Aspect ratio is dynamically managed via LaunchedEffect
+                },
+                onRelease = { view ->
+                    try {
+                        vlcPlayer.detachViews()
+                    } catch (e: Exception) {
+                        Log.e("VideoPlayer", "Error detaching VLC views on release", e)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -807,7 +981,15 @@ fun VideoPlayer(
                             )
                         }
                         IconButton(onClick = {
-                            exoPlayer.playWhenReady = !isPlaying
+                            if (decoderKernel == "VLC") {
+                                if (isPlaying) {
+                                    vlcPlayer.pause()
+                                } else {
+                                    vlcPlayer.play()
+                                }
+                            } else {
+                                exoPlayer.playWhenReady = !isPlaying
+                            }
                             isPlaying = !isPlaying
                         }) {
                             Icon(
@@ -1186,18 +1368,40 @@ fun VideoPlayer(
                                         selected = track.isSelected,
                                         onClick = {
                                             try {
-                                                val parameters = exoPlayer.trackSelectionParameters.buildUpon()
-                                                    .setOverrideForType(
-                                                        androidx.media3.common.TrackSelectionOverride(
-                                                            track.trackGroup,
-                                                            listOf(track.trackIndex)
+                                                if (decoderKernel == "VLC") {
+                                                    vlcPlayer.setAudioTrack(track.groupIndex)
+                                                    val list = mutableListOf<AudioTrackInfo>()
+                                                    val currentTrackId = vlcPlayer.audioTrack
+                                                    vlcPlayer.audioTracks?.forEach { t ->
+                                                        list.add(
+                                                            AudioTrackInfo(
+                                                                groupIndex = t.id,
+                                                                trackIndex = 0,
+                                                                language = "",
+                                                                label = t.name ?: "Track ${t.id}",
+                                                                isSelected = t.id == currentTrackId,
+                                                                trackGroup = null,
+                                                                mimeType = "VLC",
+                                                                sampleRate = 0,
+                                                                channelCount = 0
+                                                            )
                                                         )
-                                                    )
-                                                    .build()
-                                                exoPlayer.trackSelectionParameters = parameters
-                                            } catch (e: Exception) {
-                                                Log.e("VideoPlayer", "Failed to select audio track", e)
-                                            }
+                                                    }
+                                                    audioTracks = list
+                                                } else {
+                                                    val parameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                                        .setOverrideForType(
+                                                            androidx.media3.common.TrackSelectionOverride(
+                                                                track.trackGroup!!,
+                                                                listOf(track.trackIndex)
+                                                            )
+                                                        )
+                                                        .build()
+                                                    exoPlayer.trackSelectionParameters = parameters
+                                                }
+                                             } catch (e: Exception) {
+                                                 Log.e("VideoPlayer", "Failed to select audio track", e)
+                                             }
                                         },
                                         label = { Text(trackText, fontWeight = FontWeight.Bold) }
                                     )
