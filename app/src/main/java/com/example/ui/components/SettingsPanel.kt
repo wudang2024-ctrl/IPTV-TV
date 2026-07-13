@@ -381,6 +381,99 @@ fun SettingsPanel(
             }
         }
 
+        // --- LAN Remote Instant Push Card ---
+        item {
+            val localIp by viewModel.localIpAddress.collectAsState()
+            val lanPushPort = viewModel.lanPushPort
+            val lanPushUrl = "http://$localIp:$lanPushPort"
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("局域网即时远程推送 (LAN Push)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Surface(
+                            color = Color(0xFF4CAF50).copy(alpha = 0.2f),
+                            shape = MaterialTheme.shapes.extraSmall,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(Color(0xFF4CAF50), shape = androidx.compose.foundation.shape.CircleShape)
+                                )
+                                Text("服务正在运行", style = MaterialTheme.typography.labelSmall, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Text(
+                        "在手机、电脑或平板的浏览器中直接打开以下网址，即可远程推送任意直播链接或 M3U 订阅源至此设备播放：",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                        shape = MaterialTheme.shapes.medium,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = lanPushUrl,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.testTag("lan_push_url_text")
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "👉 请确保您的发送端（如手机、电脑）和此接收设备处于同一个局域网（Wi-Fi/网线）下",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("📺 播放格式与兼容性深度解析：", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            "1. 北京卫视 4K 播放正常原因：该频道流采用标准的 H.265/HEVC (视频编码) 与 AC-3/AAC (音频编码)。这两种编码是国际数字广播与流媒体通用标准，现代安卓电视盒子或系统底层都自带硬件解码加速器，任何播放器内核（包括默认的 ExoPlayer）均可无缝拉流播放，画面极其流畅。\n\n" +
+                            "2. CCTV-2 HD/SD 无法播放原因：中国国内 IPTV（电信/联通/移动）组播源中的 CCTV-1、CCTV-2、CCTV-3、CCTV-5 等高清及标清频道，为了节省卫星和骨干网传输带宽并配合广电合规，大都采用了中国主导的专属广电标准：AVS+ / AVS2 / AVS3 (视频编码) 加上 DRA (音频编码)。\n" +
+                            "由于这些编码属于中国独有国家标准，在海外标准的 Android 原生固件或默认 ExoPlayer 中完全没有内置对应的软硬件解码器（Codec）。因此强行拉流播放会由于解码器缺失而导致直接报「格式不支持/黑屏/无声/解码失败」错误。\n\n" +
+                            "3. 推荐解决方案：\n" +
+                            "• 方案 A：在路由器或 udpxy 组播代理服务器后台，开启「媒体流实时转码」选项，将 AVS+ 视频转码为 H.264，DRA 音频转码为 AAC，这样客户端在任何平台上都能秒开播放。\n" +
+                            "• 方案 B：在本页上方的「播放器设置」中，将「解码内核」切换为 VLC 或 IJKPlayer。由于 VLC 本身带有非常强大的软解 FFmpeg 底层，能兼容更多的非标准音频与中国国标格式。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray,
+                            lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+                        )
+                    }
+                }
+            }
+        }
+
         // --- Playback History ---
         item {
             Card(

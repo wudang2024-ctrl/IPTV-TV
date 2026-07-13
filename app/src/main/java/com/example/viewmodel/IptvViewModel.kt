@@ -112,6 +112,32 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     private val _externalProxyUrl = MutableStateFlow(prefs.getString("external_proxy_url", "http://192.168.31.1:7088") ?: "http://192.168.31.1:7088")
     val externalProxyUrl: StateFlow<String> = _externalProxyUrl.asStateFlow()
 
+    // --- LAN Remote Push States & Server ---
+    val lanPushPort = 19150
+    val localIpAddress = MutableStateFlow("127.0.0.1")
+    private var lanPushServer: LanPushServer? = null
+
+    private fun getIpAddress(): String {
+        try {
+            val interfaces = java.util.Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (networkInterface in interfaces) {
+                val addresses = java.util.Collections.list(networkInterface.inetAddresses)
+                for (address in addresses) {
+                    if (!address.isLoopbackAddress) {
+                        val sAddr = address.hostAddress
+                        val isIPv4 = sAddr.indexOf(':') < 0
+                        if (isIPv4) {
+                            return sAddr
+                        }
+                    }
+                }
+            }
+        } catch (ex: Exception) {
+            Log.e("IptvViewModel", "Error getting IP", ex)
+        }
+        return "127.0.0.1"
+    }
+
     fun setMulticastMode(mode: String) {
         _multicastMode.value = mode
         prefs.edit().putString("multicast_mode", mode).apply()
@@ -123,6 +149,15 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        // Retrieve and update local IP address
+        localIpAddress.value = getIpAddress()
+
+        // Start LAN push server to receive streams pushed from phone/PC
+        lanPushServer = LanPushServer(lanPushPort) { url, name ->
+            handlePushedChannel(url, name)
+        }
+        lanPushServer?.start()
+
         // Seed default sample playlist on launch if database is empty
         viewModelScope.launch {
             repository.playlists.first().let { currentList ->
@@ -136,6 +171,7 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             triggerRemotePushSync()
         }
     }
+
 
     fun selectPlaylist(id: Int?) {
         _selectedPlaylistId.value = id
@@ -383,4 +419,56 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun handlePushedChannel(url: String, name: String) {
+        viewModelScope.launch {
+            if (url.contains(".m3u", ignoreCase = true) || url.contains(".xspf", ignoreCase = true)) {
+                _remotePushUrl.value = url
+                prefs.edit().putString("remote_push_url", url).apply()
+                triggerRemotePushSync()
+            } else {
+                // Find or create "局域网推送" playlist
+                val playlistsList = repository.playlists.first()
+                val existingPlaylist = playlistsList.firstOrNull { it.name == "局域网推送" }
+                val playlistId = if (existingPlaylist != null) {
+                    existingPlaylist.id
+                } else {
+                    val newPlaylist = Playlist(
+                        name = "局域网推送",
+                        url = "",
+                        isLocal = true,
+                        isEnabled = true
+                    )
+                    repository.insertPlaylist(newPlaylist).toInt()
+                }
+
+                // Add channel
+                val newChannel = Channel(
+                    playlistId = playlistId,
+                    name = name,
+                    url = url,
+                    groupTitle = "局域网推送",
+                    isMulticast = url.startsWith("udp://", ignoreCase = true) || url.startsWith("rtp://", ignoreCase = true)
+                )
+                repository.insertChannels(listOf(newChannel))
+
+                // Query back the newly inserted channel to play
+                val channelsList = repository.allChannels.first()
+                val savedChannel = channelsList.firstOrNull { it.url == url && it.playlistId == playlistId } ?: newChannel
+
+                // Select and play
+                _selectedChannel.value = savedChannel
+                _currentGroup.value = "局域网推送"
+                _selectedPlaylistId.value = playlistId
+                Log.d("IptvViewModel", "LAN Push processed single channel successfully: $name -> $url")
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        lanPushServer?.stop()
+        lanPushServer = null
+    }
 }
+
