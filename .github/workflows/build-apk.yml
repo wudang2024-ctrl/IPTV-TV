@@ -1,0 +1,80 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Package APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Decode Debug Keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            echo "Decoding debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            echo "debug.keystore.base64 not found. Fallback: generating a standard debug keystore..."
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Fix Corrupt Gradle Wrapper
+        run: |
+          rm -f gradle/wrapper/gradle-wrapper.jar
+          curl -sLo gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v9.3.1/gradle/wrapper/gradle-wrapper.jar || {
+            echo "Failed to download wrapper jar via curl, regenerating using system gradle..."
+            gradle wrapper --gradle-version 9.3.1
+          }
+
+      - name: Set Executable Permissions for Gradlew
+        run: chmod +x gradlew
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iptv-player-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION_TAG="v1.0.${{ github.run_number }}"
+          echo "Creating release for version $VERSION_TAG..."
+          
+          # Rename the APK to include version number
+          cp app/build/outputs/apk/debug/app-debug.apk "IPTV-Player-$VERSION_TAG.apk"
+          
+          # Use GH CLI to create a release and upload the APK
+          gh release create "$VERSION_TAG" "IPTV-Player-$VERSION_TAG.apk" \
+            --title "IPTV Player $VERSION_TAG" \
+            --notes "#### 自动化构建发布 (Build ${{ github.run_number }})
+            
+            - **版本号 (Version)**: $VERSION_TAG
+            - **构建时间 (Build Time)**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+            
+            已自动编译生成最新 APK，请下载安装体验。" \
+            --target "${{ github.sha }}"

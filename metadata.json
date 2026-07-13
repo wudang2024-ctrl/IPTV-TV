@@ -1,0 +1,8 @@
+{
+  "name": "Remix: PureStream IPTV",
+  "description": "High-performance Android player supporting PHP dynamic sources, UDP multicast, EPG, and ultra-fast channel switching for TV and mobile.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
