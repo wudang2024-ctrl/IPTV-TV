@@ -250,7 +250,15 @@ fun VideoPlayer(
                 val url = channel.url
                 val isDynamicOrPhp = url.contains(".php", ignoreCase = true) || url.contains("?")
                 
-                if (isDynamicOrPhp && !forceHlsForCurrentUrl) {
+                if (errorMessage.contains("audio/mpeg-L2", ignoreCase = true) || 
+                    errorMessage.contains("mpeg-L2", ignoreCase = true) || 
+                    errorMessage.contains("audio/mpeg", ignoreCase = true) ||
+                    error.message?.contains("audio/mpeg-L2", ignoreCase = true) == true ||
+                    error.message?.contains("mpeg-L2", ignoreCase = true) == true
+                ) {
+                    playerError = "播放失败：该频道音频采用国标组播/广播常用编码（MPEG-L2 / MP2）。\n" +
+                                 "由于安卓原生内核（ExoPlayer）不支持此格式硬解，请在「设置」中将「解码内核」切换为 VLC 或 IJKPlayer，或在代理服务（如 udpxy）中将音频转码为 AAC。"
+                } else if (isDynamicOrPhp && !forceHlsForCurrentUrl) {
                     Log.d("VideoPlayer", "Dynamic/PHP stream failed. Retrying with forced HLS decoding...")
                     playerError = "尝试切换至 HLS 协议解码中..."
                     forceHlsForCurrentUrl = true
@@ -710,13 +718,25 @@ fun VideoPlayer(
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .padding(24.dp),
+                    .background(Color.Black.copy(alpha = 0.85f), shape = MaterialTheme.shapes.medium)
+                    .padding(24.dp)
+                    .widthIn(max = 520.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Default.Error, contentDescription = "播放错误", tint = Color.Red, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = err, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                Icon(
+                    Icons.Default.Error, 
+                    contentDescription = "播放错误", 
+                    tint = MaterialTheme.colorScheme.error, 
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = err, 
+                    color = Color.White, 
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+                )
             }
         }
 

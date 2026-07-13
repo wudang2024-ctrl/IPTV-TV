@@ -50,11 +50,37 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
+      - name: Prepare APKs for release
+        run: |
+          VERSION_TAG="v1.0.${{ github.run_number }}"
+          mkdir -p release-apks
+          
+          # Copy and rename each split APK if they exist
+          if [ -f "app/build/outputs/apk/debug/app-arm64-v8a-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk "release-apks/IPTV-Player-$VERSION_TAG-arm64-v8a.apk"
+          fi
+          if [ -f "app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk "release-apks/IPTV-Player-$VERSION_TAG-armeabi-v7a.apk"
+          fi
+          if [ -f "app/build/outputs/apk/debug/app-universal-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-universal-debug.apk "release-apks/IPTV-Player-$VERSION_TAG-universal.apk"
+          fi
+          if [ -f "app/build/outputs/apk/debug/app-x86-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-x86-debug.apk "release-apks/IPTV-Player-$VERSION_TAG-x86.apk"
+          fi
+          if [ -f "app/build/outputs/apk/debug/app-x86_64-debug.apk" ]; then
+            cp app/build/outputs/apk/debug/app-x86_64-debug.apk "release-apks/IPTV-Player-$VERSION_TAG-x86_64.apk"
+          fi
+          
+          # Print prepared files for verification
+          echo "=== Prepared APKs ==="
+          ls -lh release-apks/
+
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: iptv-player-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: release-apks/
           retention-days: 7
 
       - name: Create GitHub Release
@@ -65,16 +91,17 @@ jobs:
           VERSION_TAG="v1.0.${{ github.run_number }}"
           echo "Creating release for version $VERSION_TAG..."
           
-          # Rename the APK to include version number
-          cp app/build/outputs/apk/debug/app-debug.apk "IPTV-Player-$VERSION_TAG.apk"
-          
-          # Use GH CLI to create a release and upload the APK
-          gh release create "$VERSION_TAG" "IPTV-Player-$VERSION_TAG.apk" \
+          # Use GH CLI to create a release and upload all prepared architecture-specific APKs
+          gh release create "$VERSION_TAG" release-apks/*.apk \
             --title "IPTV Player $VERSION_TAG" \
             --notes "#### 自动化构建发布 (Build ${{ github.run_number }})
             
             - **版本号 (Version)**: $VERSION_TAG
             - **构建时间 (Build Time)**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
             
-            已自动编译生成最新 APK，请下载安装体验。" \
+            已自动编译生成最新多架构专属 APK，请根据设备架构下载安装（推荐 64位电视/盒子/手机下载 \`arm64-v8a\`，老旧设备下载 \`armeabi-v7a\`，通用安装请下载 \`universal\`）：
+            
+            - 🚀 **arm64-v8a**: 现代 64 位安卓系统，运行速度最快、运行效率最高。
+            - 📺 **armeabi-v7a**: 32 位系统兼容版，适合老旧、低配安卓电视或机顶盒。
+            - 🌐 **universal**: 通用集成版（包含所有架构，文件较大，兼容性最好）。" \
             --target "${{ github.sha }}"
