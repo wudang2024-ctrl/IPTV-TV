@@ -192,7 +192,8 @@ fun IptvMainScreen(
                 onPrevChannel = handlePrevChannel,
                 onToggleFullscreen = { isFullscreen = false },
                 modifier = Modifier.fillMaxSize(),
-                onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) }
+                onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
+                isFullscreen = true
             )
 
             // Transparent overlay for touch screens
@@ -210,9 +211,15 @@ fun IptvMainScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(16.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+                    .background(Color.Black.copy(alpha = 0.65f), shape = androidx.compose.foundation.shape.CircleShape)
+                    .size(48.dp)
             ) {
-                Icon(Icons.Default.FullscreenExit, contentDescription = "退出全屏", tint = Color.White)
+                Icon(
+                    imageVector = Icons.Default.FullscreenExit,
+                    contentDescription = "退出全屏",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
             }
 
             // PiP Floating Button
@@ -221,9 +228,15 @@ fun IptvMainScreen(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(16.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+                    .background(Color.Black.copy(alpha = 0.65f), shape = androidx.compose.foundation.shape.CircleShape)
+                    .size(48.dp)
             ) {
-                Icon(Icons.Default.PictureInPicture, contentDescription = "画中画", tint = Color.White)
+                Icon(
+                    imageVector = Icons.Default.PictureInPicture,
+                    contentDescription = "画中画",
+                    tint = Color.White,
+                    modifier = Modifier.size(26.dp)
+                )
             }
 
             // --- Floating Overlay Channel List ---
@@ -465,7 +478,8 @@ fun IptvMainScreen(
                                     onPrevChannel = handlePrevChannel,
                                     onToggleFullscreen = { isFullscreen = true },
                                     modifier = Modifier.fillMaxSize(),
-                                    onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) }
+                                    onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
+                                    isFullscreen = false
                                 )
 
                                 // Enter PiP Button
@@ -546,7 +560,8 @@ fun IptvMainScreen(
                             onPrevChannel = handlePrevChannel,
                             onToggleFullscreen = { isFullscreen = true },
                             modifier = Modifier.fillMaxSize(),
-                            onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) }
+                            onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) },
+                            isFullscreen = false
                         )
 
                         // Enter PiP Button

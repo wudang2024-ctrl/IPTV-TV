@@ -77,7 +77,8 @@ fun VideoPlayer(
     onToggleFullscreen: (() -> Unit)? = null,
     multicastMode: String = "InternalProxy",
     externalProxyUrl: String = "http://192.168.31.1:7088",
-    onPlaybackAspectChange: ((String) -> Unit)? = null
+    onPlaybackAspectChange: ((String) -> Unit)? = null,
+    isFullscreen: Boolean = false
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -123,6 +124,16 @@ fun VideoPlayer(
     var reloadTrigger by remember { mutableStateOf(0) }
     var overlayMessage by remember { mutableStateOf<String?>(null) }
     var currentAspectRatio by remember(aspectRatio) { mutableStateOf(aspectRatio) }
+
+    LaunchedEffect(isFullscreen) {
+        if (isFullscreen) {
+            currentAspectRatio = "Stretch"
+            onPlaybackAspectChange?.invoke("Stretch")
+        } else {
+            currentAspectRatio = "Original"
+            onPlaybackAspectChange?.invoke("Original")
+        }
+    }
 
     LaunchedEffect(overlayMessage) {
         if (overlayMessage != null) {
@@ -760,8 +771,8 @@ fun VideoPlayer(
                         if (onToggleFullscreen != null) {
                             IconButton(onClick = onToggleFullscreen) {
                                 Icon(
-                                    Icons.Default.Fullscreen,
-                                    contentDescription = "全屏播放",
+                                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    contentDescription = if (isFullscreen) "退出全屏" else "全屏播放",
                                     tint = Color.White
                                 )
                             }
@@ -924,6 +935,25 @@ fun VideoPlayer(
                             imageVector = if (useHardwareDecoder) Icons.Default.DeveloperMode else Icons.Default.ToggleOff,
                             contentDescription = "解码方式",
                             tint = if (useHardwareDecoder) MaterialTheme.colorScheme.primary else Color.LightGray
+                        )
+                    }
+                }
+
+                // 5. Beautiful Floating Fullscreen Button in Bottom-Right
+                if (onToggleFullscreen != null) {
+                    IconButton(
+                        onClick = onToggleFullscreen,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 120.dp, end = 16.dp)
+                            .background(Color.Black.copy(alpha = 0.65f), shape = androidx.compose.foundation.shape.CircleShape)
+                            .size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            contentDescription = if (isFullscreen) "退出全屏" else "全屏播放",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
@@ -1239,17 +1269,6 @@ private fun createMediaSource(
                     
     if (isHlsType) {
         mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
-    } else if (
-        contentType.contains("mp2t") || 
-        contentType.contains("mpeg") || 
-        contentType.contains("octet-stream") || 
-        url.contains(".ts", ignoreCase = true) || 
-        url.contains("/udp/", ignoreCase = true) || 
-        url.contains("/rtp/", ignoreCase = true) || 
-        url.contains("udpxy", ignoreCase = true) || 
-        url.contains(":7088", ignoreCase = true)
-    ) {
-        mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP2T)
     }
     
     val mediaItem = mediaItemBuilder.build()
@@ -1257,7 +1276,8 @@ private fun createMediaSource(
     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory().apply {
         setTsExtractorFlags(
             androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
-            androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS
+            androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS or
+            androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM
         )
     }
 
@@ -1282,7 +1302,8 @@ private fun createMediaSource(
             val dataSourceFactory = createDataSourceFactory(context)
             val hlsExtractorFactory = androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory(
                 androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
-                androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS,
+                androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS or
+                androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_IGNORE_SPLICE_INFO_STREAM,
                 true
             )
             HlsMediaSource.Factory(dataSourceFactory)
@@ -1291,8 +1312,7 @@ private fun createMediaSource(
         }
         else -> {
             val dataSourceFactory = createDataSourceFactory(context)
-            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context, extractorsFactory)
-                .setDataSourceFactory(dataSourceFactory)
+            ProgressiveMediaSource.Factory(dataSourceFactory, extractorsFactory)
                 .createMediaSource(mediaItem)
         }
     }
