@@ -193,11 +193,13 @@ class IptvViewModel(application: Application) : AndroidViewModel(application) {
         }
         lanPushServer?.start()
 
-        // Seed default sample playlist on launch if database is empty
+        // Seed default sample playlist on launch if database is empty - REMOVED: "去除内置源"
         viewModelScope.launch {
             repository.playlists.first().let { currentList ->
-                if (currentList.isEmpty()) {
-                    seedDefaultPlaylist()
+                // Clean up any existing built-in playlist to satisfy "去除内置源"
+                val builtIn = currentList.firstOrNull { it.name == "内置演示播放列表" }
+                if (builtIn != null) {
+                    deletePlaylist(builtIn)
                 } else {
                     _selectedPlaylistId.value = currentList.firstOrNull()?.id
                 }

@@ -154,6 +154,7 @@ fun VideoPlayer(
     // --- Dynamic Track State ---
     var audioTracks by remember { mutableStateOf<List<AudioTrackInfo>>(emptyList()) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showScreenSettingsPanel by remember { mutableStateOf(false) }
 
     // --- Additional Player Settings & Quick Controls State ---
     var reloadTrigger by remember { mutableStateOf(0) }
@@ -317,6 +318,8 @@ fun VideoPlayer(
         if (showControllers) {
             delay(5000)
             showControllers = false
+        } else {
+            showScreenSettingsPanel = false
         }
     }
 
@@ -962,11 +965,13 @@ fun VideoPlayer(
                     // Top control buttons (PiP, Lock, Settings, etc.)
                     Row {
                         if (onToggleFullscreen != null) {
-                            IconButton(onClick = onToggleFullscreen) {
+                            IconButton(onClick = {
+                                showScreenSettingsPanel = !showScreenSettingsPanel
+                            }) {
                                 Icon(
-                                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                    contentDescription = if (isFullscreen) "退出全屏" else "全屏播放",
-                                    tint = Color.White
+                                    imageVector = Icons.Default.AspectRatio,
+                                    contentDescription = "屏幕比例与全屏",
+                                    tint = if (showScreenSettingsPanel) MaterialTheme.colorScheme.primary else Color.White
                                 )
                             }
                         }
@@ -1084,29 +1089,16 @@ fun VideoPlayer(
                         )
                     }
                     
-                    // 2. Cycle Aspect Ratio
+                    // 2. Unified Screen & Scale Panel Trigger
                     IconButton(
                         onClick = {
-                            val aspects = listOf("Original", "Stretch", "16:9", "4:3", "Zoom")
-                            val nextIdx = (aspects.indexOf(currentAspectRatio) + 1) % aspects.size
-                            val nextAspect = aspects[nextIdx]
-                            currentAspectRatio = nextAspect
-                            onPlaybackAspectChange?.invoke(nextAspect)
-                            val displayLabel = when (nextAspect) {
-                                "Original" -> "原始比例"
-                                "Stretch" -> "拉伸全屏"
-                                "16:9" -> "宽屏 16:9"
-                                "4:3" -> "普屏 4:3"
-                                "Zoom" -> "裁剪放大 (Zoom)"
-                                else -> nextAspect
-                            }
-                            overlayMessage = "画面比例: $displayLabel"
+                            showScreenSettingsPanel = !showScreenSettingsPanel
                         }
                     ) {
                         Icon(
                             imageVector = Icons.Default.AspectRatio,
-                            contentDescription = "画面比例",
-                            tint = Color.White
+                            contentDescription = "屏幕比例与全屏",
+                            tint = if (showScreenSettingsPanel) MaterialTheme.colorScheme.primary else Color.White
                         )
                     }
                     
@@ -1140,22 +1132,134 @@ fun VideoPlayer(
                     }
                 }
 
-                // 5. Beautiful Floating Fullscreen Button in Bottom-Right
-                if (onToggleFullscreen != null) {
-                    IconButton(
-                        onClick = onToggleFullscreen,
+                // Consolidated Screen and Zoom Settings Panel
+                if (showScreenSettingsPanel) {
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = 120.dp, end = 16.dp)
-                            .background(Color.Black.copy(alpha = 0.65f), shape = androidx.compose.foundation.shape.CircleShape)
-                            .size(48.dp)
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 180.dp) // Sits perfectly above the Quick Action Bar (which is padding bottom 120.dp)
+                            .widthIn(max = 420.dp)
+                            .background(Color.Black.copy(alpha = 0.85f), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                            .clickable(enabled = false) {} // Avoid click-throughs to player background controls
+                            .padding(16.dp)
                     ) {
-                        Icon(
-                            imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                            contentDescription = if (isFullscreen) "退出全屏" else "全屏播放",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.AspectRatio,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = "屏幕与缩放设置",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { showScreenSettingsPanel = false },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "关闭",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            // Fullscreen Control Row
+                            if (onToggleFullscreen != null) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onToggleFullscreen() }
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "全屏播放模式",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Text(
+                                            text = if (isFullscreen) "当前处于全屏模式" else "当前处于窗口模式",
+                                            color = Color.Gray,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                    Switch(
+                                        checked = isFullscreen,
+                                        onCheckedChange = { onToggleFullscreen() },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                            checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                        )
+                                    )
+                                }
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.15f), thickness = 0.5.dp)
+                            }
+
+                            // Aspect Ratio Options
+                            Text(
+                                text = "画面比例与缩放",
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val aspects = listOf(
+                                    "Original" to "原始比例",
+                                    "Stretch" to "拉伸全屏",
+                                    "16:9" to "16:9",
+                                    "4:3" to "4:3",
+                                    "Zoom" to "裁剪放大"
+                                )
+                                aspects.forEach { (aspect, label) ->
+                                    val isSelected = currentAspectRatio == aspect
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .background(
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.1f),
+                                                shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable {
+                                                currentAspectRatio = aspect
+                                                onPlaybackAspectChange?.invoke(aspect)
+                                                overlayMessage = "画面比例: $label"
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (isSelected) Color.White else Color.LightGray,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
