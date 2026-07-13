@@ -76,7 +76,8 @@ fun VideoPlayer(
     modifier: Modifier = Modifier,
     onToggleFullscreen: (() -> Unit)? = null,
     multicastMode: String = "InternalProxy",
-    externalProxyUrl: String = "http://192.168.31.1:7088"
+    externalProxyUrl: String = "http://192.168.31.1:7088",
+    onPlaybackAspectChange: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -118,8 +119,20 @@ fun VideoPlayer(
     var audioTracks by remember { mutableStateOf<List<AudioTrackInfo>>(emptyList()) }
     var showSettingsDialog by remember { mutableStateOf(false) }
 
+    // --- Additional Player Settings & Quick Controls State ---
+    var reloadTrigger by remember { mutableStateOf(0) }
+    var overlayMessage by remember { mutableStateOf<String?>(null) }
+    var currentAspectRatio by remember(aspectRatio) { mutableStateOf(aspectRatio) }
+
+    LaunchedEffect(overlayMessage) {
+        if (overlayMessage != null) {
+            kotlinx.coroutines.delay(2000)
+            overlayMessage = null
+        }
+    }
+
     // --- ExoPlayer Instantiation ---
-    val exoPlayer = remember(useHardwareDecoder) {
+    val exoPlayer = remember(useHardwareDecoder, bufferMs) {
         val mediaCodecSelector = if (useHardwareDecoder) {
             androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT
         } else {
@@ -166,10 +179,27 @@ fun VideoPlayer(
         }
         renderersFactory.setMediaCodecSelector(mediaCodecSelector)
 
-        ExoPlayer.Builder(context, renderersFactory).build().apply {
-            repeatMode = Player.REPEAT_MODE_OFF
-            playWhenReady = true
-        }
+        val minBuffer = maxOf(bufferMs, 2000)
+        val maxBuffer = maxOf(bufferMs * 3, 8000)
+        val playbackStart = maxOf(bufferMs / 2, 800)
+        val playbackRebuffer = maxOf(bufferMs, 1200)
+
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                minBuffer,
+                maxBuffer,
+                playbackStart,
+                playbackRebuffer
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
+        ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+                playWhenReady = true
+            }
     }
 
     // --- Controller HUD Visibility ---
@@ -303,7 +333,7 @@ fun VideoPlayer(
     }
 
     // --- Prepare Playback Stream ---
-    LaunchedEffect(channel, isProxyRunning, proxyPort, forceHlsForCurrentUrl, playerEngine, multicastMode, externalProxyUrl) {
+    LaunchedEffect(channel, isProxyRunning, proxyPort, forceHlsForCurrentUrl, playerEngine, multicastMode, externalProxyUrl, reloadTrigger) {
         playerError = null
         if (playerEngine == "html5_webview") {
             try {
@@ -361,7 +391,7 @@ fun VideoPlayer(
     }
 
     // Aspect ratio mappings
-    val resizeMode = when (aspectRatio) {
+    val resizeMode = when (currentAspectRatio) {
         "Stretch" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
         "16:9" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
         "4:3" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -817,6 +847,115 @@ fun VideoPlayer(
                         )
                     }
                 }
+
+                // Quick Action Floating Bar
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 120.dp) // Lifted up to sit gracefully above the bottom HUD bar!
+                        .background(Color.Black.copy(alpha = 0.75f), shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // 1. Refresh Stream
+                    IconButton(
+                        onClick = {
+                            reloadTrigger++
+                            overlayMessage = "正在重新连接直播源..."
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "重新加载",
+                            tint = Color.White
+                        )
+                    }
+                    
+                    // 2. Cycle Aspect Ratio
+                    IconButton(
+                        onClick = {
+                            val aspects = listOf("Original", "Stretch", "16:9", "4:3", "Zoom")
+                            val nextIdx = (aspects.indexOf(currentAspectRatio) + 1) % aspects.size
+                            val nextAspect = aspects[nextIdx]
+                            currentAspectRatio = nextAspect
+                            onPlaybackAspectChange?.invoke(nextAspect)
+                            val displayLabel = when (nextAspect) {
+                                "Original" -> "原始比例"
+                                "Stretch" -> "拉伸全屏"
+                                "16:9" -> "宽屏 16:9"
+                                "4:3" -> "普屏 4:3"
+                                "Zoom" -> "裁剪放大 (Zoom)"
+                                else -> nextAspect
+                            }
+                            overlayMessage = "画面比例: $displayLabel"
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AspectRatio,
+                            contentDescription = "画面比例",
+                            tint = Color.White
+                        )
+                    }
+                    
+                    // 3. Audio Tracks Quick Dialog Trigger
+                    IconButton(
+                        onClick = {
+                            showSettingsDialog = true
+                            overlayMessage = "已打开播放高级设置"
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Audiotrack,
+                            contentDescription = "音频轨道",
+                            tint = Color.White
+                        )
+                    }
+                    
+                    // 4. Decoder Quick Toggle (HW / SW)
+                    IconButton(
+                        onClick = {
+                            useHardwareDecoder = !useHardwareDecoder
+                            sharedPrefs.edit().putBoolean("use_hardware_decoder", useHardwareDecoder).apply()
+                            overlayMessage = if (useHardwareDecoder) "已切换为「硬解」视频硬件加速" else "已切换为「软解」兼容视频解码"
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (useHardwareDecoder) Icons.Default.DeveloperMode else Icons.Default.ToggleOff,
+                            contentDescription = "解码方式",
+                            tint = if (useHardwareDecoder) MaterialTheme.colorScheme.primary else Color.LightGray
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- Custom Toast / Banner Notifications ---
+        AnimatedVisibility(
+            visible = overlayMessage != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 64.dp)
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.85f)),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = overlayMessage ?: "",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }
@@ -1069,6 +1208,18 @@ private suspend fun resolveStreamUrl(url: String): ResolvedStream {
 }
 
 @OptIn(UnstableApi::class)
+private fun createDataSourceFactory(context: Context): androidx.media3.datasource.DataSource.Factory {
+    val userAgent = "VLC/3.0.16 LibVLC/3.0.16"
+    val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+        .setUserAgent(userAgent)
+        .setConnectTimeoutMs(15000)
+        .setReadTimeoutMs(20000)
+        .setAllowCrossProtocolRedirects(true)
+        
+    return androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory)
+}
+
+@OptIn(UnstableApi::class)
 private fun createMediaSource(
     context: Context,
     resolved: ResolvedStream,
@@ -1088,7 +1239,16 @@ private fun createMediaSource(
                     
     if (isHlsType) {
         mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
-    } else if (contentType.contains("mp2t") || url.contains(".ts", ignoreCase = true)) {
+    } else if (
+        contentType.contains("mp2t") || 
+        contentType.contains("mpeg") || 
+        contentType.contains("octet-stream") || 
+        url.contains(".ts", ignoreCase = true) || 
+        url.contains("/udp/", ignoreCase = true) || 
+        url.contains("/rtp/", ignoreCase = true) || 
+        url.contains("udpxy", ignoreCase = true) || 
+        url.contains(":7088", ignoreCase = true)
+    ) {
         mediaItemBuilder.setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP2T)
     }
     
@@ -1119,7 +1279,7 @@ private fun createMediaSource(
                 .createMediaSource(MediaItem.fromUri(url.replace("udp://@", "udp://").replace("rtp://@", "udp://")))
         }
         isHlsType -> {
-            val dataSourceFactory = DefaultDataSource.Factory(context)
+            val dataSourceFactory = createDataSourceFactory(context)
             val hlsExtractorFactory = androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory(
                 androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS or
                 androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS,
@@ -1130,7 +1290,9 @@ private fun createMediaSource(
                 .createMediaSource(mediaItem)
         }
         else -> {
+            val dataSourceFactory = createDataSourceFactory(context)
             androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context, extractorsFactory)
+                .setDataSourceFactory(dataSourceFactory)
                 .createMediaSource(mediaItem)
         }
     }

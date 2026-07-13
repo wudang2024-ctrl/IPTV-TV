@@ -191,7 +191,8 @@ fun IptvMainScreen(
                 onNextChannel = handleNextChannel,
                 onPrevChannel = handlePrevChannel,
                 onToggleFullscreen = { isFullscreen = false },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) }
             )
 
             // Transparent overlay for touch screens
@@ -463,7 +464,8 @@ fun IptvMainScreen(
                                     onNextChannel = handleNextChannel,
                                     onPrevChannel = handlePrevChannel,
                                     onToggleFullscreen = { isFullscreen = true },
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) }
                                 )
 
                                 // Enter PiP Button
@@ -543,7 +545,8 @@ fun IptvMainScreen(
                             onNextChannel = handleNextChannel,
                             onPrevChannel = handlePrevChannel,
                             onToggleFullscreen = { isFullscreen = true },
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            onPlaybackAspectChange = { viewModel.setPlaybackAspect(it) }
                         )
 
                         // Enter PiP Button
